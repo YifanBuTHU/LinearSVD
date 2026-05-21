@@ -1,0 +1,16 @@
+{
+    "vc": 1510.0,
+    "pitch": 0.000108,
+    "fs": 80000000.0,
+    "f0": 15000000.0,
+    "Toffset": 0.0,
+    "num_samples": 3072,
+    "ring_angle": null,
+    "num_ele": 256,
+    "Nx": null,
+    "Nz": null,
+    "dx": null,
+    "dz": null,
+    "zcenter": null,
+    "sample_offset": null
+}

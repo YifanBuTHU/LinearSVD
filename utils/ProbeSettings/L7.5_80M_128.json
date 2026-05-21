@@ -1,0 +1,11 @@
+{
+    "vc": 1510,
+    "pitch": 0.3e-3,
+    "fs": 80e6,
+    "f0": 7.5e6,
+    "Toffset": 0e-6,
+    "num_samples": 2048,
+    "num_ele": 128,
+    "Nx": null,
+    "Nz": null
+}

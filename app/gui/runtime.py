@@ -280,6 +280,8 @@ class GuiRuntimeMixin:
             flag_SVD=self.flag_svd_var.get(),
             flag_Figure=self.flag_figure_var.get(),
             flag_Video=self.flag_video_var.get(),
+            flag_SVD_Video=self.flag_svd_video_var.get(),
+            flag_SVD_Frames=self.flag_svd_frames_var.get(),
             flag_sensitivity=self.flag_sensitivity_var.get(),
         )
 
@@ -370,6 +372,9 @@ class GuiRuntimeMixin:
         png_dir = results_dir / "png"
         if png_dir.exists():
             files.extend(path for path in sorted(png_dir.glob("*")) if path.is_file())
+        svd_frame_dir = results_dir / "svd_frames"
+        if svd_frame_dir.exists():
+            files.extend(path for path in sorted(svd_frame_dir.glob("*.npy")) if path.is_file())
         return files
 
     def _latest_png_index(self):
@@ -487,15 +492,11 @@ class GuiRuntimeMixin:
         current = int(payload.get("current", 0) or 0)
         total = int(payload.get("total", 0) or 0)
         indeterminate = bool(payload.get("indeterminate", False))
-        elapsed_seconds = payload.get("elapsed_seconds")
         overall_current = float(payload.get("overall_current", current or 0))
         overall_total = float(payload.get("overall_total", total or 1))
 
         self.progress_stage_var.set(payload.get("stage") or "running")
         self.progress_message_var.set(stage)
-
-        if elapsed_seconds is not None:
-            self.elapsed_time_var.set(self._format_elapsed_time(int(elapsed_seconds)))
 
         if indeterminate or total <= 0:
             self.stage_progress_bar.configure(mode="indeterminate")

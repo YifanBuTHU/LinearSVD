@@ -1,5 +1,6 @@
 ﻿__pycache__/
 *.py[cod]
+.cupy_kernel_cache/
 Results/
 *.tmp
 *.log

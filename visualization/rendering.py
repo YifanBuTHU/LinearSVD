@@ -1,4 +1,3 @@
-import cv2
 import matplotlib
 
 matplotlib.use("Agg")
@@ -29,12 +28,49 @@ def format_db_image(data, dynamic_range):
     return 20 * np.log10(magnitude)
 
 
-def normalize_to_uint8(db_image):
-    frame_min = db_image.min()
-    frame_max = db_image.max()
-    if frame_max <= frame_min:
-        return np.zeros_like(db_image, dtype=np.uint8)
-    return ((db_image - frame_min) / (frame_max - frame_min) * 255).astype(np.uint8)
+def frame_to_global_uint8(frame, global_max, dynamic_range):
+    magnitude = np.abs(_to_numpy(frame)).astype(np.float32, copy=False)
+    if global_max <= 0:
+        return np.zeros_like(magnitude, dtype=np.uint8)
+
+    threshold = 10 ** (-dynamic_range / 20)
+    normalized = np.clip(magnitude / float(global_max), threshold, 1.0)
+    db_image = 20 * np.log10(normalized)
+    scaled = (db_image + dynamic_range) / dynamic_range * 255
+    return np.clip(scaled, 0, 255).astype(np.uint8)
+
+
+def _cv2():
+    import cv2
+
+    return cv2
+
+
+def _write_video_frames(frames, video_name, dynamic_range, progress_callback=None, stage="video", message="Generating video"):
+    frames = list(frames)
+    if not frames:
+        raise ValueError("No frames are available for video generation.")
+
+    global_max = max(float(np.max(np.abs(frame))) for _, frame in frames)
+    first_frame = frame_to_global_uint8(frames[0][1], global_max, dynamic_range)
+    height, width = first_frame.shape
+
+    cv2 = _cv2()
+    fourcc = cv2.VideoWriter_fourcc(*"mp4v")
+    video_writer = cv2.VideoWriter(str(video_name), fourcc, 30, (width, height))
+
+    if progress_callback:
+        progress_callback({"stage": stage, "current": 0, "total": len(frames), "message": message})
+
+    try:
+        for current, (_, frame) in enumerate(frames, start=1):
+            frame_uint8 = frame_to_global_uint8(frame, global_max, dynamic_range)
+            frame_bgr = cv2.cvtColor(frame_uint8, cv2.COLOR_GRAY2BGR)
+            video_writer.write(frame_bgr)
+            if progress_callback:
+                progress_callback({"stage": stage, "current": current, "total": len(frames), "message": message})
+    finally:
+        video_writer.release()
 
 
 def save_reconstruction_figure(recon_para, para, paths, data_recon=None):
@@ -139,7 +175,16 @@ def save_svd_figure(data_PDI, recon_para, paths, para=None):
     plt.close()
 
 
-def create_video_from_stack(recon_para, data, paths, progress_callback=None, logger=None):
+def create_video_from_stack(
+    recon_para,
+    data,
+    paths,
+    progress_callback=None,
+    logger=None,
+    video_path=None,
+    stage="video",
+    message="Generating video",
+):
     logger = logger or print
     data_name = recon_para.Data_Name
     module = recon_para.Module
@@ -148,36 +193,14 @@ def create_video_from_stack(recon_para, data, paths, progress_callback=None, log
 
     output_dir = paths.video_dir(date)
     output_dir.mkdir(parents=True, exist_ok=True)
-    video_name = str(paths.video_file(date, data_name, module))
+    video_name = video_path or paths.reconstruction_video_file(date, data_name, module)
 
     data_np = _to_numpy(data)
     _, _, frame_num = data_np.shape
-    first_frame_processed = format_db_image(data_np[:, :, 0], dynamic_range)
-    processed_height, processed_width = first_frame_processed.shape
-
-    fourcc = cv2.VideoWriter_fourcc(*"mp4v")
-    video_writer = cv2.VideoWriter(video_name, fourcc, 30, (processed_width, processed_height))
+    frames = [(idx, data_np[:, :, idx]) for idx in range(frame_num)]
 
     logger(f"Generating video from data with {frame_num} frames...")
-    if progress_callback:
-        progress_callback({"stage": "video", "current": 0, "total": frame_num, "message": "Generating video"})
-
-    for idx in range(frame_num):
-        try:
-            current_frame = data_np[:, :, idx]
-            frame_processed = format_db_image(current_frame, dynamic_range)
-            frame_normalized = normalize_to_uint8(frame_processed)
-            frame_bgr = cv2.cvtColor(frame_normalized, cv2.COLOR_GRAY2BGR)
-            video_writer.write(frame_bgr)
-            if progress_callback:
-                progress_callback(
-                    {"stage": "video", "current": idx + 1, "total": frame_num, "message": "Generating video"}
-                )
-        except Exception as exc:
-            logger(f"Error processing frame {idx}: {exc}")
-            continue
-
-    video_writer.release()
+    _write_video_frames(frames, video_name, dynamic_range, progress_callback, stage=stage, message=message)
     logger(f"Video saved as: {video_name}")
 
 
@@ -191,36 +214,15 @@ def create_video_from_files(recon_para, paths, progress_callback=None, logger=No
 
     output_dir = paths.video_dir(date)
     output_dir.mkdir(parents=True, exist_ok=True)
-    video_name = str(paths.video_file(date, data_name, module))
+    video_name = paths.reconstruction_video_file(date, data_name, module)
 
-    first_frame = np.load(paths.recon_frame_file(date, data_name, module, 0))
-    first_frame_processed = format_db_image(first_frame, dynamic_range)
-    height, width = first_frame_processed.shape
-
-    fourcc = cv2.VideoWriter_fourcc(*"mp4v")
-    video_writer = cv2.VideoWriter(video_name, fourcc, 30, (width, height))
-
-    logger(f"Processing {frame_num} frames for video generation...")
-    if progress_callback:
-        progress_callback({"stage": "video", "current": 0, "total": frame_num, "message": "Generating video"})
-
+    frames = []
     for idx in range(frame_num):
         try:
-            data_recon = np.load(paths.recon_frame_file(date, data_name, module, idx))
-            frame_processed = format_db_image(data_recon, dynamic_range)
-            frame_normalized = normalize_to_uint8(frame_processed)
-            frame_bgr = cv2.cvtColor(frame_normalized, cv2.COLOR_GRAY2BGR)
-            video_writer.write(frame_bgr)
-            if progress_callback:
-                progress_callback(
-                    {"stage": "video", "current": idx + 1, "total": frame_num, "message": "Generating video"}
-                )
+            frames.append((idx, np.load(paths.recon_frame_file(date, data_name, module, idx))))
         except FileNotFoundError:
             logger(f"Warning: file for frame {idx} not found, skipping...")
-            continue
-        except Exception as exc:
-            logger(f"Error processing frame {idx}: {exc}")
-            continue
 
-    video_writer.release()
+    logger(f"Processing {len(frames)} reconstructed frames for video generation...")
+    _write_video_frames(frames, video_name, dynamic_range, progress_callback)
     logger(f"Video saved as: {video_name}")

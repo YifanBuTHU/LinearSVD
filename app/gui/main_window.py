@@ -3,6 +3,7 @@ from pathlib import Path
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 
+from app.gui.presets import GuiPresetStore
 from app.gui.runtime import GuiRuntimeMixin
 from app.gui.shared import (
     PROJECT_ROOT,
@@ -15,6 +16,51 @@ from utils.config import PathConfig, ReconParams
 
 
 class LinearSVDGui(GuiRuntimeMixin):
+    GUI_PRESET_FIELDS = (
+        ("conda_executable", "conda_executable_var"),
+        ("conda_env", "conda_env_var"),
+        ("data_root", "data_root_var"),
+        ("results_root", "results_root_var"),
+        ("data_name", "data_name_var"),
+        ("date", "date_var"),
+        ("data_type", "data_type_var"),
+        ("builtin_probe", "builtin_probe_var"),
+        ("probe_name", "probe_name_var"),
+        ("probe_pitch", "probe_pitch_var"),
+        ("probe_fs", "probe_fs_var"),
+        ("probe_f0", "probe_f0_var"),
+        ("probe_toffset", "probe_toffset_var"),
+        ("probe_num_samples", "probe_num_samples_var"),
+        ("probe_num_ele", "probe_num_ele_var"),
+        ("probe_ring_angle", "probe_ring_angle_var"),
+        ("module", "module_var"),
+        ("frame_num", "frame_num_var"),
+        ("angle_start", "angle_start_var"),
+        ("angle_end", "angle_end_var"),
+        ("angle_step", "angle_step_var"),
+        ("flag_data_process", "flag_data_process_var"),
+        ("flag_recon", "flag_recon_var"),
+        ("flag_figure", "flag_figure_var"),
+        ("flag_svd", "flag_svd_var"),
+        ("flag_video", "flag_video_var"),
+        ("flag_svd_video", "flag_svd_video_var"),
+        ("flag_svd_frames", "flag_svd_frames_var"),
+        ("flag_sensitivity", "flag_sensitivity_var"),
+        ("dynamic_range_figure", "dynamic_range_figure_var"),
+        ("svd_num", "svd_num_var"),
+        ("dynamic_range_svd", "dynamic_range_svd_var"),
+        ("dynamic_range_video", "dynamic_range_video_var"),
+        ("runtime_vc", "runtime_vc_var"),
+        ("gpu_device", "gpu_device_var"),
+        ("toffset_correction", "toffset_correction_var"),
+        ("segment_nx", "segment_nx_var"),
+        ("image_nx", "image_nx_var"),
+        ("image_nz", "image_nz_var"),
+        ("image_dx", "image_dx_var"),
+        ("image_dz", "image_dz_var"),
+        ("zcenter", "zcenter_var"),
+    )
+
     def __init__(self, root):
         self.root = root
         self.ui_scale = configure_tk_scaling(self.root)
@@ -54,6 +100,10 @@ class LinearSVDGui(GuiRuntimeMixin):
         default_paths = PathConfig()
         default_recon = ReconParams()
 
+        self.preset_store = GuiPresetStore()
+        self.preset_name_var = tk.StringVar(value="")
+        self.preset_choice_var = tk.StringVar(value="")
+
         self.data_root_var = tk.StringVar(value=r"E:\Study\PhD2\Data\Marsonics")
         self.results_root_var = tk.StringVar(value=str(default_paths.results_root))
         self.conda_executable_var = tk.StringVar(value=str(default_conda_executable()))
@@ -87,6 +137,8 @@ class LinearSVDGui(GuiRuntimeMixin):
         self.flag_figure_var = tk.BooleanVar(value=default_recon.flag_Figure)
         self.flag_svd_var = tk.BooleanVar(value=default_recon.flag_SVD)
         self.flag_video_var = tk.BooleanVar(value=default_recon.flag_Video)
+        self.flag_svd_video_var = tk.BooleanVar(value=default_recon.flag_SVD_Video)
+        self.flag_svd_frames_var = tk.BooleanVar(value=default_recon.flag_SVD_Frames)
         self.flag_sensitivity_var = tk.BooleanVar(value=default_recon.flag_sensitivity)
 
         self.dynamic_range_figure_var = tk.StringVar(value=str(default_recon.dynamic_range_figure))
@@ -168,14 +220,54 @@ class LinearSVDGui(GuiRuntimeMixin):
         self._build_sections()
 
     def _build_sections(self):
+        self._build_preset_section()
         self._build_system_section()
         self._build_probe_section()
         self._build_reconstruction_section()
         self._build_action_section()
 
+    def _build_preset_section(self):
+        section = ttk.LabelFrame(self.controls_frame, text="Global Settings Presets", padding=10)
+        section.grid(row=0, column=0, sticky="ew", pady=(0, 10))
+        section.columnconfigure(1, weight=1)
+
+        ttk.Label(section, text="Preset Name").grid(row=0, column=0, sticky="w", padx=(0, 8), pady=4)
+        ttk.Entry(section, textvariable=self.preset_name_var).grid(row=0, column=1, sticky="ew", pady=4)
+        ttk.Button(section, text="Save Current", command=self._save_current_preset).grid(
+            row=0,
+            column=2,
+            padx=(8, 0),
+            pady=4,
+        )
+
+        ttk.Label(section, text="Saved Preset").grid(row=1, column=0, sticky="w", padx=(0, 8), pady=4)
+        self.preset_choice_combo = ttk.Combobox(section, textvariable=self.preset_choice_var, state="readonly")
+        self.preset_choice_combo.grid(row=1, column=1, sticky="ew", pady=4)
+        self.preset_choice_combo.bind("<<ComboboxSelected>>", self._on_preset_selected)
+
+        ttk.Button(section, text="Load Selected", command=self._load_selected_preset).grid(
+            row=1,
+            column=2,
+            padx=(8, 0),
+            pady=4,
+        )
+        ttk.Button(section, text="Delete", command=self._delete_selected_preset).grid(
+            row=1,
+            column=3,
+            padx=(8, 0),
+            pady=4,
+        )
+        ttk.Button(section, text="Refresh", command=lambda: self._refresh_preset_choices(set_status=True)).grid(
+            row=1,
+            column=4,
+            padx=(8, 0),
+            pady=4,
+        )
+        self._refresh_preset_choices()
+
     def _build_system_section(self):
         section = ttk.LabelFrame(self.controls_frame, text="System Paths And Data", padding=10)
-        section.grid(row=0, column=0, sticky="ew", pady=(0, 10))
+        section.grid(row=1, column=0, sticky="ew", pady=(0, 10))
         section.columnconfigure(1, weight=1)
 
         ttk.Label(section, text="Conda Executable").grid(row=0, column=0, sticky="w", padx=(0, 8), pady=4)
@@ -215,7 +307,7 @@ class LinearSVDGui(GuiRuntimeMixin):
 
     def _build_probe_section(self):
         section = ttk.LabelFrame(self.controls_frame, text="Probe Settings", padding=10)
-        section.grid(row=1, column=0, sticky="ew", pady=(0, 10))
+        section.grid(row=2, column=0, sticky="ew", pady=(0, 10))
         section.columnconfigure(1, weight=1)
         section.columnconfigure(3, weight=1)
 
@@ -245,7 +337,7 @@ class LinearSVDGui(GuiRuntimeMixin):
 
     def _build_reconstruction_section(self):
         section = ttk.LabelFrame(self.controls_frame, text="Reconstruction And Runtime", padding=10)
-        section.grid(row=2, column=0, sticky="ew", pady=(0, 10))
+        section.grid(row=3, column=0, sticky="ew", pady=(0, 10))
         for column in range(4):
             section.columnconfigure(column, weight=1)
 
@@ -260,8 +352,22 @@ class LinearSVDGui(GuiRuntimeMixin):
         ttk.Checkbutton(section, text="Save Per-Frame PNG", variable=self.flag_figure_var, command=self._update_toggle_states).grid(row=1, column=2, sticky="w", pady=4)
         ttk.Checkbutton(section, text="Run SVD", variable=self.flag_svd_var, command=self._update_toggle_states).grid(row=1, column=3, sticky="w", pady=4)
 
-        ttk.Checkbutton(section, text="Generate Video", variable=self.flag_video_var, command=self._update_toggle_states).grid(row=2, column=0, sticky="w", pady=4)
-        ttk.Checkbutton(section, text="Sensitivity Correction", variable=self.flag_sensitivity_var).grid(row=2, column=1, sticky="w", pady=4)
+        ttk.Checkbutton(section, text="Save Reconstruction Video", variable=self.flag_video_var, command=self._update_toggle_states).grid(row=2, column=0, sticky="w", pady=4)
+        self.svd_video_checkbutton = ttk.Checkbutton(
+            section,
+            text="Save SVD Video",
+            variable=self.flag_svd_video_var,
+            command=self._update_toggle_states,
+        )
+        self.svd_video_checkbutton.grid(row=2, column=1, sticky="w", pady=4)
+        self.svd_frames_checkbutton = ttk.Checkbutton(
+            section,
+            text="Save SVD Per-Frame Data",
+            variable=self.flag_svd_frames_var,
+            command=self._update_toggle_states,
+        )
+        self.svd_frames_checkbutton.grid(row=2, column=2, sticky="w", pady=4)
+        ttk.Checkbutton(section, text="Sensitivity Correction", variable=self.flag_sensitivity_var).grid(row=2, column=3, sticky="w", pady=4)
 
         ttk.Label(section, text="Angle Start").grid(row=3, column=0, sticky="w", padx=(0, 8), pady=4)
         ttk.Entry(section, textvariable=self.angle_start_var).grid(row=3, column=1, sticky="ew", pady=4)
@@ -312,7 +418,7 @@ class LinearSVDGui(GuiRuntimeMixin):
 
     def _build_action_section(self):
         section = ttk.LabelFrame(self.controls_frame, text="Actions", padding=10)
-        section.grid(row=3, column=0, sticky="ew")
+        section.grid(row=4, column=0, sticky="ew")
 
         self.run_button = ttk.Button(section, text="Run", command=self._start_run)
         self.run_button.grid(row=0, column=0, padx=(0, 8), pady=4)
@@ -337,7 +443,106 @@ class LinearSVDGui(GuiRuntimeMixin):
         self.flag_figure_var.trace_add("write", lambda *_: self._update_toggle_states())
         self.flag_svd_var.trace_add("write", lambda *_: self._update_toggle_states())
         self.flag_video_var.trace_add("write", lambda *_: self._update_toggle_states())
+        self.flag_svd_video_var.trace_add("write", lambda *_: self._update_toggle_states())
+        self.flag_svd_frames_var.trace_add("write", lambda *_: self._update_toggle_states())
         self.probe_name_var.trace_add("write", lambda *_: self._sync_builtin_template_from_label())
+
+    def _on_preset_selected(self, event=None):
+        self.preset_name_var.set(self.preset_choice_var.get())
+
+    def _refresh_preset_choices(self, set_status=False):
+        try:
+            names = self.preset_store.list_names()
+        except Exception as exc:
+            messagebox.showerror("Global Presets", f"Failed to list presets:\n{exc}")
+            return
+
+        current = self.preset_choice_var.get().strip()
+        self.preset_choice_combo["values"] = names
+        if current in names:
+            self.preset_choice_var.set(current)
+        elif names:
+            self.preset_choice_var.set(names[0])
+        else:
+            self.preset_choice_var.set("")
+
+        if set_status:
+            self.status_var.set("Preset list refreshed.")
+
+    def _save_current_preset(self):
+        name = self.preset_name_var.get().strip() or self.preset_choice_var.get().strip()
+        if not name:
+            messagebox.showinfo("Global Presets", "Please enter a preset name first.")
+            return
+
+        try:
+            exists = self.preset_store.exists(name)
+        except ValueError as exc:
+            messagebox.showerror("Global Presets", str(exc))
+            return
+
+        if exists and not messagebox.askyesno("Global Presets", f"Overwrite preset '{name}'?"):
+            return
+
+        try:
+            path = self.preset_store.save(name, self._collect_gui_preset_values())
+        except Exception as exc:
+            messagebox.showerror("Global Presets", f"Failed to save preset:\n{exc}")
+            return
+
+        self.preset_name_var.set(name)
+        self._refresh_preset_choices()
+        self.preset_choice_var.set(name)
+        self.status_var.set(f"Saved global preset: {path}")
+
+    def _load_selected_preset(self):
+        name = self.preset_choice_var.get().strip()
+        if not name:
+            messagebox.showinfo("Global Presets", "Please select a preset first.")
+            return
+
+        try:
+            payload = self.preset_store.load(name)
+            self._apply_gui_preset_values(payload["gui"])
+        except Exception as exc:
+            messagebox.showerror("Global Presets", f"Failed to load preset:\n{exc}")
+            return
+
+        loaded_name = payload.get("name", name)
+        self.preset_name_var.set(loaded_name)
+        self.preset_choice_var.set(loaded_name)
+        self.status_var.set(f"Loaded global preset: {loaded_name}")
+
+    def _delete_selected_preset(self):
+        name = self.preset_choice_var.get().strip()
+        if not name:
+            messagebox.showinfo("Global Presets", "Please select a preset first.")
+            return
+        if not messagebox.askyesno("Global Presets", f"Delete preset '{name}'?"):
+            return
+
+        try:
+            self.preset_store.delete(name)
+        except Exception as exc:
+            messagebox.showerror("Global Presets", f"Failed to delete preset:\n{exc}")
+            return
+
+        self.preset_name_var.set("")
+        self._refresh_preset_choices()
+        self.status_var.set(f"Deleted global preset: {name}")
+
+    def _collect_gui_preset_values(self):
+        return {key: getattr(self, variable_name).get() for key, variable_name in self.GUI_PRESET_FIELDS}
+
+    def _apply_gui_preset_values(self, values, refresh=True):
+        for key, variable_name in self.GUI_PRESET_FIELDS:
+            if key in values:
+                getattr(self, variable_name).set(values[key])
+
+        if refresh:
+            self._update_path_preview()
+            self._sync_builtin_template_from_label()
+            self._update_toggle_states()
 
     def _load_defaults(self):
         probe_files = self._get_builtin_probe_files()
@@ -433,10 +638,19 @@ class LinearSVDGui(GuiRuntimeMixin):
         self.output_path_var.set(str(results_dir))
 
     def _update_toggle_states(self):
+        svd_enabled = self.flag_svd_var.get()
+        if not svd_enabled:
+            if self.flag_svd_video_var.get():
+                self.flag_svd_video_var.set(False)
+            if self.flag_svd_frames_var.get():
+                self.flag_svd_frames_var.set(False)
         self.figure_dynamic_entry.configure(state=tk.NORMAL if self.flag_figure_var.get() else tk.DISABLED)
-        self.svd_num_entry.configure(state=tk.NORMAL if self.flag_svd_var.get() else tk.DISABLED)
-        self.svd_dynamic_entry.configure(state=tk.NORMAL if self.flag_svd_var.get() else tk.DISABLED)
-        self.video_dynamic_entry.configure(state=tk.NORMAL if self.flag_video_var.get() else tk.DISABLED)
+        self.svd_num_entry.configure(state=tk.NORMAL if svd_enabled else tk.DISABLED)
+        self.svd_dynamic_entry.configure(state=tk.NORMAL if svd_enabled else tk.DISABLED)
+        self.svd_video_checkbutton.configure(state=tk.NORMAL if svd_enabled else tk.DISABLED)
+        self.svd_frames_checkbutton.configure(state=tk.NORMAL if svd_enabled else tk.DISABLED)
+        video_enabled = self.flag_video_var.get() or self.flag_svd_video_var.get()
+        self.video_dynamic_entry.configure(state=tk.NORMAL if video_enabled else tk.DISABLED)
 
     def _bind_canvas_mousewheel(self, event):
         self.root.bind_all("<MouseWheel>", self._on_canvas_mousewheel)

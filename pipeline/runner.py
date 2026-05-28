@@ -445,11 +445,11 @@ def run_pipeline(recon_para, para, paths, use_tqdm=True, logger=None, progress_c
         run_metrics.update(stream_metrics)
 
     if recon_para.flag_Video:
-        log("Generating video from reconstructed frames...")
+        log("Generating reconstruction video from reconstructed frames...")
         create_video_from_files(
             recon_para,
             paths,
-            progress_callback=progress_reporter.callback("video", "Generating video"),
+            progress_callback=progress_reporter.callback("video", "Generating reconstruction video"),
             logger=log,
         )
 
@@ -476,7 +476,7 @@ def run_pipeline(recon_para, para, paths, use_tqdm=True, logger=None, progress_c
             for idx in used_indices:
                 if 0 <= idx < len(records):
                     records[idx]["included_svd"] = True
-            svd_status = f"completed using frame indices: {used_indices}"
+            svd_status = f"completed using frame indices: {_format_index_list(used_indices)}"
 
     run_metrics["wall_s"] = time.perf_counter() - start_time
     summary_path = _write_run_summary(paths, recon_para, records, svd_status, run_metrics=run_metrics)

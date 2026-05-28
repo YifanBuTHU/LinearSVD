@@ -8,15 +8,12 @@ from utils.Probe import ProbeSettings
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-LEGACY_DATA_ROOT = Path("/data/bml/BYF/HalfRingPDI")
 
 
 def _default_data_root() -> Path:
     env_value = os.getenv("LINEAR_SVD_DATA_ROOT")
     if env_value:
         return Path(env_value).expanduser()
-    if LEGACY_DATA_ROOT.exists():
-        return LEGACY_DATA_ROOT
     return PROJECT_ROOT / "Data"
 
 
@@ -58,8 +55,20 @@ class PathConfig:
     def video_dir(self, date: str) -> Path:
         return self.result_date_dir(date)
 
+    def reconstruction_video_file(self, date: str, data_name: str, module: str) -> Path:
+        return self.video_dir(date) / f"{data_name}_{module}_reconstruction_video.mp4"
+
     def video_file(self, date: str, data_name: str, module: str) -> Path:
-        return self.video_dir(date) / f"{data_name}_{module}_video.mp4"
+        return self.reconstruction_video_file(date, data_name, module)
+
+    def svd_video_file(self, date: str, data_name: str, module: str, svd_num: int) -> Path:
+        return self.video_dir(date) / f"{data_name}_{module}_SVD_{svd_num}_video.mp4"
+
+    def svd_frame_dir(self, date: str) -> Path:
+        return self.result_date_dir(date) / "svd_frames"
+
+    def svd_frame_file(self, date: str, data_name: str, module: str, svd_num: int, idx: int) -> Path:
+        return self.svd_frame_dir(date) / f"SVD_{data_name}_{module}_{svd_num}_{idx}.npy"
 
     def svd_figure_file(self, date: str, data_name: str, module: str, svd_num: int, dynamic_range: int) -> Path:
         return self.result_date_dir(date) / f"SVD_{data_name}_{module}_{svd_num}_{dynamic_range}dB.png"
@@ -69,6 +78,8 @@ class PathConfig:
         self.result_date_dir(recon_para.Date).mkdir(parents=True, exist_ok=True)
         if recon_para.flag_Figure:
             self.figure_dir(recon_para.Date).mkdir(parents=True, exist_ok=True)
+        if recon_para.flag_SVD_Frames:
+            self.svd_frame_dir(recon_para.Date).mkdir(parents=True, exist_ok=True)
 
 
 @dataclass
@@ -102,10 +113,11 @@ class ReconParams:
     flag_SVD: bool = False
     flag_Figure: bool = True
     flag_Video: bool = False
+    flag_SVD_Video: bool = False
+    flag_SVD_Frames: bool = False
     flag_sensitivity: bool = False
     flag_position: bool = False
     preprocess_workers: int = None
-    das_angle_batch_size: int = None
     async_save: bool = True
     emit_perf_metrics: bool = True
 
@@ -136,8 +148,6 @@ class ReconParams:
             raise ValueError("segment_Nx must be a positive integer.")
         if self.preprocess_workers is not None and self.preprocess_workers <= 0:
             raise ValueError("preprocess_workers must be positive when provided.")
-        if self.das_angle_batch_size is not None and self.das_angle_batch_size <= 0:
-            raise ValueError("das_angle_batch_size must be positive when provided.")
         if self.dynamic_range_figure <= 0 or self.dynamic_range_svd <= 0 or self.dynamic_range_video <= 0:
             raise ValueError("Dynamic range parameters must be positive.")
         if self.image_nx <= 0 or self.image_nz <= 0:
@@ -150,6 +160,8 @@ class ReconParams:
                 raise ValueError("angles must be evenly spaced for the current reconstruction implementation.")
         if self.flag_SVD and not (0 <= self.SVD_num < self.frame_num):
             raise ValueError("SVD_num must satisfy 0 <= SVD_num < frame_num when SVD is enabled.")
+        if (self.flag_SVD_Video or self.flag_SVD_Frames) and not self.flag_SVD:
+            raise ValueError("SVD video or SVD frame outputs require SVD to be enabled.")
         if self.flag_Recon and not self.flag_Data_Process:
             raise ValueError(
                 "Reconstruction now requires streaming raw preprocessing; processed frame caches are no longer supported."

@@ -51,7 +51,34 @@ def _legacy_processed_frame(paths: PathConfig, date: str, name: str, idx: int):
     return paths.session_data_dir(date) / f"{name}_{idx}.npy"
 
 
-def test_das_angle_batching_matches_reference():
+def _reference_das(data, recon_context, para):
+    data_np = cp.asnumpy(data).astype(np.complex64, copy=False)
+    data_np[0, :, :] = 0
+    output = np.empty((para.Nx, para.Nz), dtype=np.complex64)
+    angle_count = int(recon_context["angle_count"])
+
+    for segment in recon_context["segments"]:
+        sample_rf = cp.asnumpy(segment["sample_rf"])
+        weights = cp.asnumpy(segment["weights"])
+        segment_out = np.zeros((sample_rf.shape[0], para.Nz), dtype=np.complex64)
+
+        for x_idx in range(sample_rf.shape[0]):
+            for z_idx in range(para.Nz):
+                total = np.complex64(0)
+                for ele_idx in range(para.num_ele):
+                    weight = weights[x_idx, z_idx, ele_idx]
+                    for angle_idx in range(angle_count):
+                        sample_idx = sample_rf[x_idx, z_idx, ele_idx, angle_idx]
+                        if 0 < sample_idx < para.num_samples:
+                            total += data_np[sample_idx, ele_idx, angle_idx] * weight
+                segment_out[x_idx, z_idx] = total / (para.num_ele * angle_count)
+
+        output[segment["x_slice"], :] = segment_out
+
+    return cp.asarray(output)
+
+
+def test_das_cuda_kernel_matches_reference_formula():
     rng = np.random.default_rng(11)
     para = _probe(num_samples=48, num_ele=5)
     recon_para = ReconParams(
@@ -62,7 +89,6 @@ def test_das_angle_batching_matches_reference():
         image_dz=0.2e-3,
         zcenter=0.0,
         toffset_correction_samples=0,
-        das_angle_batch_size=3,
     )
     recon_para.apply_to_probe(para)
     recon_context = Linear_TOF_Cal(para, recon_para)
@@ -71,19 +97,7 @@ def test_das_angle_batching_matches_reference():
     imag = rng.normal(size=real.shape).astype(np.float32)
     data = cp.asarray(real + 1j * imag)
 
-    reference_para = ReconParams(
-        angles=recon_para.angles,
-        image_nx=recon_para.image_nx,
-        image_nz=recon_para.image_nz,
-        image_dx=recon_para.image_dx,
-        image_dz=recon_para.image_dz,
-        zcenter=recon_para.zcenter,
-        toffset_correction_samples=0,
-        das_angle_batch_size=1,
-    )
-    reference_para.apply_to_probe(para)
-
-    expected = Reconstruction(data, recon_context, para, reference_para)
+    expected = _reference_das(data, recon_context, para)
     actual = Reconstruction(data, recon_context, para, recon_para)
 
     cp.testing.assert_allclose(actual, expected, rtol=1e-5, atol=1e-5)

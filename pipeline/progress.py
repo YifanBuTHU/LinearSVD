@@ -22,6 +22,10 @@ def build_progress_steps(recon_para) -> list[ProgressStep]:
     if recon_para.flag_SVD:
         steps.append(ProgressStep("svd_load", "Loading SVD data", 1))
         steps.append(ProgressStep("svd_compute", "Computing SVD", 1))
+        if recon_para.flag_SVD_Frames:
+            steps.append(ProgressStep("svd_frames", "Saving SVD frames", recon_para.frame_num))
+        if recon_para.flag_SVD_Video:
+            steps.append(ProgressStep("svd_video", "Generating SVD video", recon_para.frame_num))
         steps.append(ProgressStep("svd_noise", "Estimating noise", 1))
         steps.append(ProgressStep("svd_figure", "Saving SVD figure", 1))
 
